@@ -2,10 +2,29 @@ import json
 import re
 from datetime import datetime
 import os
+import getUserData
 
 def charaCollection(response):
+    with open('data/user/userSectionList.json', encoding='utf-8') as f:
+        response['userSectionList'] = json.load(f)
+    with open('data/cards.json', encoding='utf-8') as f:
+        allCards = json.load(f)
     with open('data/user/userCharaList.json', encoding='utf-8') as f:
-        response['charaList'] = json.load(f)
+        userCharas = json.load(f)
+    userCharaIds = [chara['charaId'] for chara in userCharas]
+    with open('data/user/userCardList.json', encoding='utf-8') as f:
+        userCards = json.load(f)
+    cardIds = {card['cardId']: card['id'] for card in userCards}
+        
+    for i in range(len(allCards)):
+        if allCards[i]['charaId'] in userCharaIds:
+            del allCards[i]['chara']
+        for j in range(len(allCards[i]['cardList'])):
+            currId = allCards[i]['cardList'][j]['cardId']
+            if currId in cardIds.keys():
+                allCards[i]['cardList'][j] = {'userCardId': cardIds[currId], 'cardId': currId}
+                
+    response['charaList'] = allCards
 
 def charaListCompose(response):
     with open('data/user/userCharaList.json', encoding='utf-8') as f:
@@ -18,10 +37,10 @@ def charaTop(response):
         response['gameUser'] = json.load(f)
 
 def configTop(response):
-    with open('data/user/user.json', encoding='utf-8') as f:
-        user = json.load(f)
+    with open('data/user/gameUser.json', encoding='utf-8') as f:
+        gameUser = json.load(f)
     response['canChangeLoginName'] = True
-    response['setPassword'] = user['setPassword']
+    response['setPassword'] = 'passwordNotice' in gameUser and gameUser['passwordNotice']
 
 def followTop(response):
     with open('data/user/userFollowList.json', encoding='utf-8') as f:
@@ -52,7 +71,8 @@ def pieceArchive(response):
     response['userPieceArchiveList'] = [userPiece for userPiece in userPieceList if userPiece['archive']]
 
 def pieceCollection(response):
-    response['userPieceCollectionList'] = []
+    with open('data/user/userPieceCollectionList.json', encoding='utf-8') as f:
+        response['userPieceCollectionList'] = json.load(f)
 
 def presentList(response):
     response['presentList'] = []
@@ -70,11 +90,23 @@ def storyCollection(response):
         response['arenaBattleFreeRankClassList'] = json.load(f)
     with open('data/user/userArenaBattle.json', encoding='utf-8') as f:
         response['userArenaBattle'] = json.load(f)
+    with open('data/campaignStoryList.json', encoding='utf-8') as f:
+        response['campaignStoryList'] = json.load(f)
 
 def supportSelect(response):
     with open('data/npc.json', encoding='utf-8') as f:
         npc = json.load(f)
     response['npcHelpList'] = [npc]
+
+def doppelCollection(response):
+    with open('data/doppelList.json', encoding='utf-8') as f:
+        response['doppelList'] = json.load(f)
+
+def enemyCollection(response):
+    with open('data/enemyList.json', encoding='utf-8') as f:
+        response['enemyList'] = json.load(f)
+    with open('data/user/userEnemyList.json', encoding='utf-8') as f:
+        response['userEnemyList'] = json.load(f)
 
 specialCases = {
     "CharaCollection": charaCollection,
@@ -90,7 +122,9 @@ specialCases = {
     "PresentList": presentList,
     "ShopTop": shopTop,
     "StoryCollection": storyCollection,
-    "SupportSelect": supportSelect
+    "SupportSelect": supportSelect,
+    "DoppelCollection": doppelCollection,
+    "EnemyCollection": enemyCollection
 }
 
 # TODO: clear history on first day's login
@@ -108,6 +142,12 @@ def login(user):
     user['lastLoginDate'] = nowstr
     user['lastAccessDate'] = nowstr
     user['indexingTargetDate'] = nowstr
+
+    with open('data/user/gameUser.json', encoding='utf-8') as f:
+        gameUser = json.load(f)
+    gameUser['announcementViewAt'] = nowstr
+    with open('data/user/gameUser.json', 'w+', encoding='utf-8') as f:
+        json.dump(gameUser, f, ensure_ascii=False)
     return user
 
 def addArgs(response, args, isLogin):
@@ -125,19 +165,32 @@ def addArgs(response, args, isLogin):
         if arg in ['user', 'gameUser', 'userStatusList',
         'userLive2dList', 'userCardList', 'userCharaList', 'userDeckList', 'userFormationSheetList',
         'userPieceList', 'userPieceSetList', 'userItemList', 'userSectionList', 'userGiftList',
-        'userQuestAdventureList', 'userQuestBattleList', 'userChapterList']:
+        'userQuestAdventureList', 'userQuestBattleList', 'userChapterList', 'userDoppelList',
+        'userDailyChallengeList', 'userLimitedChallengeList', 'userTotalChallengeList',
+        'itemList', 'giftList', 'pieceList']:
             print('loading ' + arg + ' from json')
-            with open('data/user/'+arg+'.json', encoding='utf-8') as f:
-                response[arg] = json.load(f)
+            fpath = 'data/user/'+arg+'.json'
+            if os.path.exists(fpath):
+                with open(fpath, encoding='utf-8') as f:
+                    response[arg] = json.load(f)
+                if arg == 'userPieceList':
+                    response[arg] = [userPiece for userPiece in response[arg] if not userPiece['archive']]
+            else:
+                print(f'{fpath} not found')
         elif arg.lower().endswith('list'):
             response[arg] = []
 
-def handlePage(request, isLogin):
+def handlePage(flow, isLogin):
+    request = flow.request
     with open('data/events.json', encoding='UTF-8') as f:
         response = json.load(f)
 
     endpoint_and_args = request.path.replace('/magica/api/page/', '')
-    endpoint, args = endpoint_and_args.split('?')
+    if len(endpoint_and_args.split('?')) ==2:
+        endpoint, args = endpoint_and_args.split('?')
+    else:
+        endpoint = endpoint_and_args
+        args = ''
     args = re.sub(r'&timeStamp=\d+', '', args) \
             .replace('value=', '') \
             .split(',')

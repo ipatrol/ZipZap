@@ -123,13 +123,13 @@ def setUpPity(groupId, pity=None):
     pityList.append(newPity)
     with open('data/user/userGachaGroupList.json', 'w', encoding='utf-8') as f:
         json.dump(pityList, f, ensure_ascii=False)
-    return pityGroup, 0
+    return newPity, 0
 
 def spend(itemId, amount, preferredItemId = None, preferredItemAmount = 1):
     with open('data/user/userItemList.json', encoding='utf-8') as f:
         userItems = json.load(f)
     
-    updatedItem = None
+    updatedItems = []
     foundPreferred = False
     if preferredItemId is not None:
         for i in range(len(userItems)):
@@ -139,22 +139,43 @@ def spend(itemId, amount, preferredItemId = None, preferredItemAmount = 1):
                 item['quantity'] -= preferredItemAmount
                 userItems[i] = item
                 foundPreferred = True
-                updatedItem = item
+                updatedItems.append(item)
                 break
     
     if not foundPreferred:
-        for i in range(len(userItems)):
-            item = userItems[i]
-            if item['itemId'] == itemId:
-                print("Spending " + str(amount) + " " + itemId)
-                item['quantity'] -= amount
-                userItems[i] = item
-                updatedItem = item
-                break
+        if itemId != 'MONEY':
+            for i in range(len(userItems)):
+                item = userItems[i]
+                if item['itemId'] == itemId:
+                    print("Spending " + str(amount) + " " + itemId)
+                    item['quantity'] -= amount
+                    userItems[i] = item
+                    updatedItems.append(item)
+                    break
+        else: # spend paid gems after free gems, and also the ID is different
+            print("Spending " + str(amount) + " " + itemId)
+            paidIdx = 0
+            freeIdx = 0
+            for i in range(len(userItems)):
+                item = userItems[i]
+                if item['itemId'] == 'MONEY':
+                    paidIdx = i
+                if item['itemId'] == 'PRESENTED_MONEY':
+                    freeIdx = i
+            
+            numFreeStones = userItems[freeIdx]['quantity']
+            userItems[freeIdx]['quantity'] -= amount
+            if userItems[freeIdx]['quantity'] < 0:
+                userItems[freeIdx]['quantity'] = 0
+                amount -= numFreeStones
+                userItems[paidIdx]['quantity'] -= amount
+
+            updatedItems += [userItems[freeIdx], userItems[paidIdx]]
+
     
     with open('data/user/userItemList.json', 'w', encoding='utf-8') as f:
         json.dump(userItems, f, ensure_ascii=False)
-    return updatedItem
+    return updatedItems
 
 def addGem(gem):
     with open('data/user/userItemList.json', encoding='utf-8') as f:
@@ -279,6 +300,22 @@ def addPiece(piece):
         "createdAt": nowstr
     }
     pieceList.append(userPiece)
+    
+    if not foundExisting:
+        with open('data/user/userPieceCollectionList.json', encoding='utf-8') as f:
+            pieceCollection = json.load(f)
+        existingIds = [collPiece['pieceId'] for collPiece in pieceCollection]
+        if not piece['pieceId'] in existingIds:
+            pieceCollection.append({
+                "createdAt": nowstr,
+                "maxLbCount": 0,
+                "maxLevel": 1,
+                "piece": piece,
+                "pieceId": piece['pieceId'],
+                "userId": userId
+            })
+        with open('data/user/userPieceCollectionList.json', 'w+', encoding='utf-8') as f:
+            json.dump(pieceCollection, f, ensure_ascii=False)
 
     with open('data/user/userPieceList.json', 'w', encoding='utf-8') as f:
         json.dump(pieceList, f, ensure_ascii=False)
@@ -387,8 +424,8 @@ def draw(flow):
         if kind['beanKind'] == body['gachaBeanKind']:
             gachaKind = kind
 
-    userItemList.append(
-        spend(gachaKind['needPointKind'], gachaKind['needQuantity'], gachaKind['substituteItemId'] if 'substituteItemId' in gachaKind else None))
+    userItemList += \
+        spend(gachaKind['needPointKind'], gachaKind['needQuantity'], gachaKind['substituteItemId'] if 'substituteItemId' in gachaKind else None)
 
 
     # create response

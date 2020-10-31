@@ -1,5 +1,8 @@
 import json
+import transferUserData
 from mitmproxy import http
+from uuid import uuid1
+import requests
 
 def isAnswered(flow):
     response = {
@@ -20,12 +23,22 @@ def setPassword(flow):
     }
     flow.response = http.HTTPResponse.make(200, json.dumps(response, ensure_ascii=False), {"Content-Type": "application/json"})
 
+def transfer(flow):
+    body = json.loads(flow.request.text)
+    try:
+        transferUserData.fetchData(body['personalId'], body['password'])
+    except ValueError as e:
+        flow.response = http.HTTPResponse.make(400, str(e), {"Content-Type": "application/json"})
+    flow.response = http.HTTPResponse.make(200, '{"resultCode": "success"}', {"Content-Type": "application/json"})
+
 def handleUser(flow):
     endpoint = flow.request.path.replace('/magica/api/user', '')
     if endpoint.endswith('/isAnswered'):
         isAnswered(flow)
     elif endpoint.endswith('/setPassword'):
         setPassword(flow)
+    elif endpoint.endswith('/transfer'):
+        transfer(flow)
     else:
-        print(endpoint)
+        print(flow.request.path)
         flow.response = http.HTTPResponse.make(501, "Not implemented", {})

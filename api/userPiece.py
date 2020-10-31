@@ -101,13 +101,14 @@ def compose(flow):
         flow.response = http.HTTPResponse.make(400, 'Tried to level up a memoria you don\'t have...', {})
         return
 
-    originalUserPiece = targetUserPiece
+    originalUserPiece = {k: v for k, v in targetUserPiece.items()}
     targetUserPiece, success = levelUp(targetUserPiece, memoriaToSpend)
 
     # limit break
     isLimitBreak = False
     for memoria in memoriaToSpend:
-        if memoria['pieceId'] == targetUserPiece['pieceId'] or userPiece['piece']['pieceKind']=='LIMIT_BREAK':
+        if memoria['pieceId'] == targetUserPiece['pieceId'] or \
+        ('pieceKind' in userPiece['piece'] and userPiece['piece']['pieceKind']=='LIMIT_BREAK'):
             isLimitBreak = True
     if isLimitBreak:
         targetUserPiece['lbCount'] += len(memoriaToSpend)
@@ -133,6 +134,17 @@ def compose(flow):
     with open('data/user/userPieceList.json', 'w+', encoding='utf-8') as f:
         json.dump(userPieceList, f, ensure_ascii=False)
 
+    with open('data/user/userPieceCollectionList.json', encoding='utf-8') as f:
+        pieceCollection = json.load(f)
+    for i, piece in enumerate(pieceCollection):
+        if piece['pieceId'] == targetUserPiece['pieceId']:
+            if targetUserPiece['level'] > piece['maxLevel']:
+                pieceCollection[i]['maxLevel'] = targetUserPiece['level']
+            if targetUserPiece['lbCount'] > piece['maxLbCount']:
+                pieceCollection[i]['maxLbCount'] = targetUserPiece['lbCount']
+    with open('data/user/userPieceCollectionList.json', 'w+', encoding='utf-8') as f:
+        json.dump(pieceCollection, f, ensure_ascii=False)
+
     response = {
         'resultCode': 'success',
         'gameUser': gameUser,
@@ -149,7 +161,7 @@ def compose(flow):
                     "lbCount": originalUserPiece['lbCount'],
                     "level": originalUserPiece['level'],
                     "limitExp": parExArr[originalUserPiece['level']],
-                    "limitLevel": getMaxLevel(originalUserPiece['piece']['rank'], originalUserPiece['level']),
+                    "limitLevel": getMaxLevel(originalUserPiece['piece']['rank'], originalUserPiece['lbCount']),
                     "rarity": int(originalUserPiece['piece']['rank'][-1])
                 },
                 "result": {
@@ -160,7 +172,7 @@ def compose(flow):
                     "lbCount": targetUserPiece['lbCount'],
                     "level": targetUserPiece['level'],
                     "limitExp": parExArr[targetUserPiece['level']],
-                    "limitLevel": getMaxLevel(targetUserPiece['piece']['rank'], targetUserPiece['level']),
+                    "limitLevel": getMaxLevel(targetUserPiece['piece']['rank'], targetUserPiece['lbCount']),
                     "rarity": int(targetUserPiece['piece']['rank'][-1])
                 }
             },
@@ -207,5 +219,5 @@ def handleUserPiece(flow):
     elif endpoint.endswith('/unarchive'):
         setArchive(flow, False)
     else:
-        print(endpoint)
+        print(flow.request.path)
         flow.response = http.HTTPResponse.make(501, "Not implemented", {})
